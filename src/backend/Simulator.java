@@ -1,5 +1,6 @@
 package backend;
 import java.util.ArrayList;
+import java.util.Random;
 
 import windowInterface.MyInterface;
 
@@ -18,6 +19,8 @@ public class Simulator extends Thread {
 	private ArrayList<Integer> fieldBirthValues;
 	
 	private ArrayList<Agent> agents;
+
+	private int[][] field;
 	
 	private boolean stopFlag;
 	private boolean pauseFlag;
@@ -29,40 +32,35 @@ public class Simulator extends Thread {
 
 	public Simulator(MyInterface mjfParam) {
 		mjf = mjfParam;
-		stopFlag=false;
-		pauseFlag=false;
-		loopingBorder=false;
-		clickActionFlag=false;
+		stopFlag = false;
+		pauseFlag = false;
+		loopingBorder = false;
+		clickActionFlag = false;
 
 		agents = new ArrayList<Agent>();
 		fieldBirthValues = new ArrayList<Integer>();
 		fieldSurviveValues = new ArrayList<Integer>();
 
-		//TODO : add missing attribute initialization
-		
-		
-		
-		//Default rule : Survive always, birth never
-		for(int i =0; i<9; i++) {
+		field = new int[LINE_NUM][COL_NUM]; // Initialize the field
+
+		// Default rule: Survive always, birth never
+		for (int i = 0; i < 9; i++) {
 			fieldSurviveValues.add(i);
 		}
-		
 	}
 
 	public int getWidth() {
-		//TODO : replace with proper return
-		return 0;
+		return COL_NUM;
 	}
 
 	public int getHeight() {
-		//TODO : replace with proper return
-		return 0;
+		return LINE_NUM;
 	}
 
 	//Should probably stay as is
 	public void run() {
-		int stepCount=0;
-		while(!stopFlag) {
+		int stepCount = 0;
+		while (!stopFlag) {
 			stepCount++;
 			makeStep();
 			mjf.update(stepCount);
@@ -71,7 +69,7 @@ public class Simulator extends Thread {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			while(pauseFlag && !stopFlag) {
+			while (pauseFlag && !stopFlag) {
 				try {
 					Thread.sleep(loopDelay);
 				} catch (InterruptedException e) {
@@ -79,9 +77,7 @@ public class Simulator extends Thread {
 				}
 			}
 		}
-
 	}
-
 	/**
 	 * method called at each step of the simulation
 	 * makes all the actions to go from one step to the other
@@ -91,40 +87,69 @@ public class Simulator extends Thread {
 		// only modify if sure of what you do
 		// to modify agent behavior, see liveTurn method
 		// in agent classes
-		for(Agent agent : agents) {
-			ArrayList<Agent> neighbors = 
-					this.getNeighboringAnimals(
-					agent.getX(), 
-					agent.getY(), 
-					ANIMAL_AREA_RADIUS);
-			if(!agent.liveTurn(
-					neighbors,
-					this)) {
+		for (int i = 0; i < agents.size(); i++) {
+			Agent agent = agents.get(i);
+			ArrayList<Agent> neighbors = this.getNeighboringAnimals(agent.getX(), agent.getY(), ANIMAL_AREA_RADIUS);
+			if (!agent.liveTurn(neighbors, this)) {
 				agents.remove(agent);
+				i--; // Adjust the index since we removed an element
 			}
 		}
-		//then evolution of the field
-		// TODO : apply game rule to all cells of the field
-		
-		/* you should distribute this action in methods/classes
-		 * don't write everything here !
-		 * 
-		 * the idea is first to get the surrounding values
-		 * then count how many are alive
-		 * then check if that number is in the lists of rules
-		 * if the cell is alive 
-		 * 		and the count is in the survive list,
-		 * 		then the cell stays alive
-		 * if the cell is not alive
-		 * 		and the count is in the birth list,
-		 * 		then the cell becomes alive 	
-		 */
-		
-		
-		
-		
+		// then evolution of the field
+		int[][] newField = new int[LINE_NUM][COL_NUM];
+
+		for (int y = 0; y < LINE_NUM; y++) {
+			for (int x = 0; x < COL_NUM; x++) {
+				int aliveNeighbors = countAliveNeighbors(x, y);
+				if (field[y][x] == 1) {
+					if (fieldSurviveValues.contains(aliveNeighbors)) {
+						newField[y][x] = 1;
+					} else {
+						newField[y][x] = 0;
+					}
+				} else {
+					if (fieldBirthValues.contains(aliveNeighbors)) {
+						newField[y][x] = 1;
+					} else {
+						newField[y][x] = 0;
+					}
+				}
+			}
+		}
+		field = newField;
 	}
-	
+
+
+
+
+	private int countAliveNeighbors(int x, int y) {
+		int count = 0;
+		for (int i = -LIFE_AREA_RADIUS; i <= LIFE_AREA_RADIUS; i++) {
+			for (int j = -LIFE_AREA_RADIUS; j <= LIFE_AREA_RADIUS; j++) {
+				if (i == 0 && j == 0) {
+					continue;
+				}
+				int neighborX = x + i;
+				int neighborY = y + j;
+
+				if (loopingBorder) {
+					neighborX = (neighborX + COL_NUM) % COL_NUM;
+					neighborY = (neighborY + LINE_NUM) % LINE_NUM;
+				} else {
+					if (neighborX < 0 || neighborY < 0 || neighborX >= COL_NUM || neighborY >= LINE_NUM) {
+						continue;
+					}
+				}
+
+				if (field[neighborY][neighborX] == 1) {
+					count++;
+				}
+			}
+		}
+		return count;
+	}
+
+
 	/*
 	 * leave this as is
 	 */
@@ -137,6 +162,7 @@ public class Simulator extends Thread {
 	 */
 	public void togglePause() {
 		// TODO : actually toggle the corresponding flag
+		pauseFlag = !pauseFlag;
 	}
 	
 	/**
@@ -144,6 +170,20 @@ public class Simulator extends Thread {
 	 */
 	public void clickCell(int x, int y) {
 		//TODO : complete method
+		if (clickActionFlag) {
+			// Add/remove an agent
+			// Placeholder: assume we toggle an agent at this position
+			for (Agent agent : agents) {
+				if (agent.getX() == x && agent.getY() == y) {
+					agents.remove(agent);
+					return;
+				}
+			}
+			agents.add(new Sheep(x,y));
+		} else {
+			// Toggle cell state
+			field[y][x] = (field[y][x] == 0) ? 1 : 0;
+		}
 	}
 	
 	/**
@@ -154,7 +194,7 @@ public class Simulator extends Thread {
 	 */
 	public int getCell(int x, int y) {
 		//TODO : complete method with proper return
-		return 0;
+		return field[y][x];
 	}
 	/**
 	 * 
@@ -189,6 +229,7 @@ public class Simulator extends Thread {
 	 */
 	public void setCell(int x, int y, int val) {
 		//TODO : complete method
+		field[y][x] = val;
 	}
 	
 	/**
@@ -198,7 +239,15 @@ public class Simulator extends Thread {
 	 */
 	public ArrayList<String> getSaveState() {
 		//TODO : complete method with proper return
-		return null;
+		ArrayList<String> saveState = new ArrayList<String>();
+		for (int y = 0; y < LINE_NUM; y++) {
+			StringBuilder line = new StringBuilder();
+			for (int x = 0; x < COL_NUM; x++) {
+				line.append(field[y][x]).append(";");
+			}
+			saveState.add(line.toString());
+		}
+		return saveState;
 	}
 	/**
 	 * 
@@ -211,24 +260,35 @@ public class Simulator extends Thread {
 		 * "Guard clauses", as they guard the method
 		 * against unwanted inputs
 		 */
-		if(lines.size()<=0) {
+//		if(lines.size()<=0) {
+//			return;
+//		}
+//		String firstLine = lines.get(0);
+//		String[] firstLineElements = firstLine.split(";");
+//		if(firstLineElements.length<=0) {
+//			return;
+//		}
+//		/*
+//		 * now we fill in the world
+//		 * with the content of the file
+//		 */
+//		for(int y =0; y<lines.size();y++) {
+//			String line = lines.get(y);
+//			String[] lineElements = line.split(";");
+//			for(int x=0; x<lineElements.length;x++) {
+//				String elem = lineElements[x];
+//				int value = Integer.parseInt(elem);
+//				setCell(x, y, value);
+//			}
+//		}
+		if (lines.size() <= 0) {
 			return;
 		}
-		String firstLine = lines.get(0);
-		String[] firstLineElements = firstLine.split(";");
-		if(firstLineElements.length<=0) {
-			return;
-		}
-		/*
-		 * now we fill in the world 
-		 * with the content of the file
-		 */
-		for(int y =0; y<lines.size();y++) {
+		for (int y = 0; y < lines.size(); y++) {
 			String line = lines.get(y);
 			String[] lineElements = line.split(";");
-			for(int x=0; x<lineElements.length;x++) {
-				String elem = lineElements[x];
-				int value = Integer.parseInt(elem);
+			for (int x = 0; x < lineElements.length; x++) {
+				int value = Integer.parseInt(lineElements[x]);
 				setCell(x, y, value);
 			}
 		}
@@ -249,38 +309,56 @@ public class Simulator extends Thread {
 		 * maybe just make a constructor in there 
 		 * and use it here
 		 */
+		Random random = new Random();
+		for (int y = 0; y < LINE_NUM; y++) {
+			for (int x = 0; x < COL_NUM; x++) {
+				field[y][x] = random.nextFloat() < chanceOfLife ? 1 : 0;
+			}
+		}
 	}
 	
 	public boolean isLoopingBorder() {
 		//TODO : complete method with proper return
-		return false;
+		return loopingBorder;
 	}
 	
 	public void toggleLoopingBorder() {
 		//TODO : complete method
-		
+		loopingBorder = !loopingBorder;
 	}
 	
 	public void setLoopDelay(int delay) {
 		//TODO : complete method
+		loopDelay = delay;
 	}
 	
 	public void toggleClickAction() {
 		//TODO : complete method
+		clickActionFlag = !clickActionFlag;
 	}
 
 	/**
 	 * prepare the content of a file saving present ruleSet
 	 *  as you might want to save a state,
-	 *  initialy written in this class constructor 
+	 *  initialy written in this class constructor
 	 *  as a file for future use
 	 * @return File content as an ArrayList of Lines (String)
-	 * @see loadRule for inverse process
+//	 * @see loadRule for inverse process
 	 */
 	public ArrayList<String> getRule() {
 		//TODO : complete method with proper return
-		
-		return null;
+		ArrayList<String> rule = new ArrayList<String>();
+		StringBuilder surviveLine = new StringBuilder();
+		for (Integer value : fieldSurviveValues) {
+			surviveLine.append(value).append(";");
+		}
+		StringBuilder birthLine = new StringBuilder();
+		for (Integer value : fieldBirthValues) {
+			birthLine.append(value).append(";");
+		}
+		rule.add(surviveLine.toString());
+		rule.add(birthLine.toString());
+		return rule;
 	}
 
 	public void loadRule(ArrayList<String> lines) {
@@ -289,34 +367,72 @@ public class Simulator extends Thread {
 			return;
 		}
 		//TODO : remove previous rule (=emptying lists)
-		
-		
-		String surviveLine = lines.get(0);
-		String birthLine = lines.get(1);
-		String[] surviveElements = surviveLine.split(";");
+
+		fieldSurviveValues.clear();
+		fieldBirthValues.clear();
+		String[] surviveElements = lines.get(0).split(";");
 		for(int x=0; x<surviveElements.length;x++) {
 			String elem = surviveElements[x];
 			int value = Integer.parseInt(elem);
 			//TODO : add value to possible survive values
-			
+			fieldSurviveValues.add(value);
+
 		}
-		String[] birthElements = birthLine.split(";");
+		String[] birthElements = lines.get(1).split(";");
 		for(int x=0; x<birthElements.length;x++) {
 			String elem = birthElements[x];
 			int value = Integer.parseInt(elem);
 			//TODO : add value to possible birth values
-			
+			fieldBirthValues.add(value);
+
 		}
 	}
 	
 	public ArrayList<String> getAgentsSave() {
 		//TODO : Same idea as the other save method, but for agents
-		return null;
+		ArrayList<String> agentsSave = new ArrayList<String>();
+		for (Agent agent : agents) {
+			agentsSave.add(agent.save());
+		}
+		return agentsSave;
 	}
 
-	public void loadAgents(ArrayList<String> stringArray) {
-		//TODO : Same idea as other load methods, but for agent list
-		
+	public void loadAgents(ArrayList<String> agentData) {
+		synchronized (agents) {
+			agents.clear(); // Clear existing agents
+			for (String data : agentData) {
+				Agent agent = createAgent(data);
+				if (agent != null) {
+					agents.add(agent);
+				}
+			}
+		}
+	}
+	private Agent createAgent(String agentData) {
+		String[] parts = agentData.split(",");
+		if (parts.length < 1) {
+			return null; // Invalid data, return null
+		}
+		String agentType = parts[0]; // Extract the agent type
+		switch (agentType) {
+			case "Sheep":
+				return createSheep(parts); // Create Sheep agent
+
+			default:
+				System.out.println("Unknown agent type: " + agentType);
+				return null; // Unknown agent type, return null
+		}
+	}
+	private Sheep createSheep(String[] parts) {
+
+		if (parts.length >= 3) {
+			int x = Integer.parseInt(parts[1]);
+			int y = Integer.parseInt(parts[2]);
+			return new Sheep(x, y); // Create Sheep instance
+		} else {
+			System.out.println("Invalid Sheep data: " + String.join(",", parts));
+			return null; // Invalid Sheep data, return null
+		}
 	}
 
 	/**
@@ -326,7 +442,7 @@ public class Simulator extends Thread {
 	public String clickActionName() {
 		// TODO : initially return "sheep" or "cell"
 		// depending on clickActionFlag
-		return "";
+		return clickActionFlag ? "agent" : "cell";
 	}
 
 }
